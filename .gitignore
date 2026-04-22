@@ -1,0 +1,38 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+publish_output/
+publish_sc/
+hrleave-api.zip
+hrleave-api-sc.zip
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+
+# Node / Frontend
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+
+# Vercel
+.vercel/
+
+# Project planning and AI tooling docs (not for public repo)
+BRD_*.md
+BRD_*.docx
+brd_text.txt
+docs/
+CLAUDE.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
