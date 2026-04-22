@@ -40,7 +40,7 @@ A full-stack, cloud-native portfolio project demonstrating end-to-end HCM data e
                              │ JDBC upsert
 ┌────────────────────────────▼────────────────────────────────────┐
 │                  DATA WAREHOUSE  [Phase 3]                       │
-│     SQL Server 2022 Developer Edition (local)                    │
+│     Databricks Unity Catalog · Delta tables (workspace.dw.*)     │
 │     Star schema: 3 fact tables  ·  4 dimensions (SCD Type 2)    │
 └────────────────────────────┬────────────────────────────────────┘
                              │ DirectQuery / Import
@@ -69,7 +69,7 @@ A full-stack, cloud-native portfolio project demonstrating end-to-end HCM data e
 | Frontend hosting | Vercel | Zero-config CDN deployment from GitHub |
 | API hosting | Azure App Service (Linux, F1) | PaaS deployment with zip-deploy |
 | ETL | Databricks CE + PySpark | Industry-standard medallion architecture |
-| Warehouse | SQL Server 2022 Developer | Local DWH with star schema, SCD Type 2 |
+| Warehouse | Databricks Unity Catalog (Delta) | Star schema in `workspace.dw`; SCD Type 2 on dim_employee |
 | Analytics | Power BI Desktop + Service | Published dashboards with DAX measures |
 
 ---
@@ -125,12 +125,13 @@ Department ──< Employee >── LeaveBalance
 | `sp_CalculateCarryForward` | Year-end carry-forward logic per leave type rules |
 | `sp_InitialiseYearlyBalances` | Bootstraps annual entitlements for all active employees |
 
-### Data Warehouse Schema *(Phase 3 — in progress)*
+### Data Warehouse Schema
 
-Star schema in SQL Server 2022 (`dw` schema):
-- **Fact tables:** `fact_LeaveRequest`, `fact_LeaveBalance`, `fact_Attendance`
-- **Dimensions:** `dim_Employee` (SCD Type 2), `dim_LeaveType`, `dim_Department`, `dim_Date`
-- `dim_Employee` tracks historical department changes with `ValidFrom` / `ValidTo` / `IsCurrent`
+Star schema stored as **Delta tables in Databricks Unity Catalog** (`workspace.dw.*`):
+- **Fact tables:** `fact_leaverequest`, `fact_leavebalance`, `fact_attendance`
+- **Dimensions:** `dim_employee` (SCD Type 2), `dim_leavetype`, `dim_department`, `dim_date`
+- `dim_employee` tracks historical department changes with `ValidFrom` / `ValidTo` / `IsCurrent`
+- SCD Type 2 verified: department change triggers row expiry + new current row insert
 
 ---
 
@@ -158,15 +159,19 @@ All endpoints require `Authorization: Bearer <token>`. Demo tokens are pre-gener
 
 ---
 
-## ETL Pipeline *(Phase 3 — in progress)*
+## ETL Pipeline
 
-Three PySpark notebooks following the **medallion architecture**:
+Three PySpark notebooks following the **medallion architecture**, built on Databricks Community Edition. Notebooks are exported as `.ipynb` and viewable in [`databricks/`](databricks/) with full cell outputs.
 
 | Notebook | Layer | Description |
 |---|---|---|
-| `01_bronze.ipynb` | Bronze | JDBC extract from Azure SQL; append-only with `_ingested_at` metadata |
-| `02_silver.ipynb` | Silver | Type casting, deduplication, snake_case normalisation, `_is_valid` flag |
-| `03_gold.ipynb` | Gold | SCD Type 2 dimension loads + fact table upserts into SQL Server DWH |
+| [`00_connection_test.ipynb`](databricks/00_connection_test.ipynb) | Setup | JDBC connectivity test to Azure SQL from Databricks CE |
+| [`01_bronze.ipynb`](databricks/01_bronze.ipynb) | Bronze | JDBC extract of 6 OLTP tables + synthetic Attendance data; append-only Parquet to Unity Catalog Volumes |
+| [`02_silver.ipynb`](databricks/02_silver.ipynb) | Silver | Type casting, deduplication on natural key, snake_case rename, `_is_valid` / `_validation_error` flags |
+| [`03_gold.ipynb`](databricks/03_gold.ipynb) | Gold | Star schema construction, SCD Type 2 on dim_Employee, JDBC upsert to Azure SQL `dw` schema |
+
+**Storage:** Unity Catalog Volumes at `/Volumes/workspace/default/{bronze,silver,gold}/`  
+**DWH target:** Azure SQL `dw` schema — 4 dimension tables + 3 fact tables, queryable via SSMS or Power BI
 
 ---
 
@@ -249,7 +254,11 @@ hr-leave-platform/
 │       ├── services/           # Axios API layer (never called direct from components)
 │       ├── store/              # Zustand auth store
 │       └── utils/              # Working-day calculator
-└── databricks/                 # Phase 3 — PySpark ETL notebooks (in progress)
+└── databricks/
+    ├── 00_connection_test.ipynb  # Azure SQL JDBC connectivity test
+    ├── 01_bronze.ipynb           # Raw extract → Unity Catalog Volumes
+    ├── 02_silver.ipynb           # Clean, cast, dedup, validate
+    └── 03_gold.ipynb             # Star schema + SCD Type 2 → Azure SQL dw
 ```
 
 ---
@@ -275,7 +284,7 @@ See the full test report: [TEST_REPORT.md](TEST_REPORT.md)
 - [x] Phase 1 — Azure SQL OLTP schema, stored procedures, .NET 10 Web API
 - [x] Phase 2 — React frontend, leave workflow, manager approval dashboard
 - [x] Phase 2.5 — GitHub Actions CI/CD, secrets management, clean public repo
-- [ ] Phase 3 — Databricks PySpark ETL (Bronze/Silver/Gold), SQL Server DWH
+- [x] Phase 3 — Databricks PySpark ETL (Bronze/Silver/Gold), Unity Catalog Delta DWH, SCD Type 2 verified
 - [ ] Phase 4 — Power BI dashboard (4 pages, 6 DAX measures, published to Power BI Service)
 - [ ] Phase 5 — Architecture diagram, final polish
 
