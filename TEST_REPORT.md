@@ -1,7 +1,7 @@
 # Test Report — HR Leave Management Platform
 
 **Project:** HR Leave Management & Analytics Platform  
-**Version:** Phase 1 + 2 Complete  
+**Version:** Phase 1 + 2 + 3 + 4 Complete  
 **Tester:** Farhan Ahmed  
 **Test Type:** Manual Functional Testing, API Testing, RBAC Verification  
 **Environment:** Azure App Service (Production) + Vercel (Production)  
@@ -23,7 +23,9 @@
 | Business Rules | 5 | 5 | 0 |
 | Frontend — Smoke Tests | 7 | 7 | 0 |
 | CI/CD Pipeline | 2 | 2 | 0 |
-| **Total** | **34** | **34** | **0** |
+| ETL Pipeline (Phase 3) | 4 | 4 | 0 |
+| Power BI DAX Validation (Phase 4) | 6 | 6 | 0 |
+| **Total** | **44** | **44** | **0** |
 
 ---
 
@@ -367,9 +369,108 @@ Full tokens available in Swagger UI at `/swagger`.
 
 ---
 
+## 9. ETL Pipeline (Phase 3)
+
+**Environment:** Databricks Community Edition, Unity Catalog (`workspace.dw.*`)
+
+### TC-035: Bronze Layer — Raw Extract
+| Field | Detail |
+|---|---|
+| **Notebook** | `databricks/01_bronze.ipynb` |
+| **Steps** | Run notebook; verify Parquet files written to `/Volumes/workspace/default/bronze/` |
+| **Expected** | 6 OLTP tables + synthetic attendance extracted; row counts match Azure SQL source |
+| **Actual** | All 7 datasets written; row counts match; `_batch_id`, `_extracted_at` metadata columns populated |
+| **Status** | ✅ Pass |
+
+### TC-036: Silver Layer — Zero Invalid Rows
+| Field | Detail |
+|---|---|
+| **Notebook** | `databricks/02_silver.ipynb` |
+| **Steps** | Run notebook; check `_is_valid` column across all 6 tables |
+| **Expected** | 0 rows with `_is_valid = false` across all tables |
+| **Actual** | 0 invalid rows; all type casts and dedup logic passed |
+| **Status** | ✅ Pass |
+
+### TC-037: Gold Layer — 7 DWH Tables Populated
+| Field | Detail |
+|---|---|
+| **Notebook** | `databricks/03_gold.ipynb` |
+| **Steps** | Run notebook; verify all 7 Delta tables exist in `workspace.dw.*` |
+| **Expected** | dim_date, dim_department, dim_leavetype, dim_employee, fact_leaverequest, fact_leavebalance, fact_attendance all populated |
+| **Actual** | All 7 tables created as Delta; row counts verified via `spark.read.table()` in Cell 9 |
+| **Status** | ✅ Pass |
+
+### TC-038: SCD Type 2 — dim_employee Department Change
+| Field | Detail |
+|---|---|
+| **Notebook** | `databricks/03_gold.ipynb` |
+| **Steps** | Update Employee 2 department in Azure SQL; re-run gold notebook; query `workspace.dw.dim_employee WHERE EmployeeId = 2` |
+| **Expected** | 2 rows: old row with `IsCurrent=false`, `ValidTo=today`; new row with `IsCurrent=true`, `ValidTo=null` |
+| **Actual** | 2 rows confirmed; `ValidFrom`/`ValidTo`/`IsCurrent` correctly set; surrogate keys unique (AC-08 pass) |
+| **Status** | ✅ Pass |
+
+---
+
+## 10. Power BI DAX Validation (Phase 4, AC-09)
+
+**Validation method:** Each Power BI measure value cross-checked against Databricks SQL Editor query.
+
+### TC-039: Leave Utilisation Rate
+| Field | Detail |
+|---|---|
+| **DAX** | `DIVIDE(SUM(fact_leavebalance[TotalUsed]), SUM(fact_leavebalance[TotalEntitled]), 0)` |
+| **Databricks SQL** | `SELECT SUM(TotalUsed) / NULLIF(SUM(TotalEntitled), 0) FROM workspace.dw.fact_leavebalance` |
+| **Databricks result** | 0.013 |
+| **Power BI result** | 1.3% |
+| **Status** | ✅ Pass |
+
+### TC-040: Avg Approval SLA (Days)
+| Field | Detail |
+|---|---|
+| **DAX** | `AVERAGEX(FILTER(fact_leaverequest, Status="Approved"), DaysToApproval)` |
+| **Databricks SQL** | `SELECT AVG(DaysToApproval) FROM workspace.dw.fact_leaverequest WHERE Status='Approved' AND DaysToApproval IS NOT NULL` |
+| **Databricks result** | 1.75 |
+| **Power BI result** | 1.8 (1 d.p. rounding) |
+| **Status** | ✅ Pass |
+
+### TC-041: Absenteeism Rate
+| Field | Detail |
+|---|---|
+| **DAX** | `DIVIDE(approved TotalDays, non-weekend non-holiday COUNTROWS(dim_date), 0)` |
+| **Databricks SQL** | LeaveDays=25, WorkingDays=2799 → 25/2799 = 0.00893 |
+| **Power BI result** | 0.89% |
+| **Status** | ✅ Pass |
+
+### TC-042: YTD Leave Used
+| Field | Detail |
+|---|---|
+| **DAX** | `CALCULATE(SUM TotalDays, Status="Approved", dim_date Year=today AND FullDate<=today)` |
+| **Databricks SQL** | `SELECT SUM(TotalDays) ... WHERE Status='Approved' AND Year=YEAR(current_date()) AND FullDate<=current_date()` |
+| **Databricks result** | 23 |
+| **Power BI result** | 23 |
+| **Status** | ✅ Pass |
+
+### TC-043: Leave Request Count
+| Field | Detail |
+|---|---|
+| **DAX** | `COUNTROWS(fact_leaverequest)` |
+| **Databricks SQL** | `SELECT COUNT(*) FROM workspace.dw.fact_leaverequest` |
+| **Result** | Matched |
+| **Status** | ✅ Pass |
+
+### TC-044: Pending Ageing Bucket
+| Field | Detail |
+|---|---|
+| **Type** | Calculated column on `fact_leaverequest` |
+| **Databricks SQL** | Bucket counts via `DATEDIFF(current_date(), d.FullDate)` grouped by bucket |
+| **Result** | Bucket distribution matched between Power BI and Databricks |
+| **Status** | ✅ Pass |
+
+---
+
 ## Defects Log
 
-No defects outstanding. All 34 test cases pass in production environment.
+No defects outstanding. All 44 test cases pass in production environment.
 
 ---
 

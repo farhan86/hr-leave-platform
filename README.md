@@ -265,7 +265,7 @@ hr-leave-platform/
 
 ## Testing
 
-34 test cases covering API endpoints, RBAC, business rules, frontend smoke tests, and CI/CD pipelines — all passing in the production environment.
+44 test cases covering API endpoints, RBAC, business rules, frontend smoke tests, CI/CD pipelines, ETL pipeline verification, and Power BI DAX validation — all passing.
 
 See the full test report: [TEST_REPORT.md](TEST_REPORT.md)
 
@@ -276,6 +276,8 @@ See the full test report: [TEST_REPORT.md](TEST_REPORT.md)
 | Business Rules (balance, overlaps, audit log) | 5 | ✅ All pass |
 | Frontend Smoke Tests | 7 | ✅ All pass |
 | CI/CD Pipeline | 2 | ✅ All pass |
+| ETL Pipeline (Bronze/Silver/Gold, SCD Type 2) | 4 | ✅ All pass |
+| Power BI DAX Validation (AC-09) | 6 | ✅ All pass |
 
 ---
 
